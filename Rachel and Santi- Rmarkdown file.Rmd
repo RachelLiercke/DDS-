@@ -1,0 +1,314 @@
+---
+title: "Rachel and Santi Case Study"
+author: "Rachel Liercke & Santiago Gutierrez"
+date: "2022-10-21"
+output: 
+  github_document: default
+  html_document: default
+---
+
+
+# Introduction
+We have been asked by Budweiser to run an analysis on their beers and breweries data that they have collected and answer a few questions.
+#Below we have completed our Exploratory Data Analysis over the datasets provided.
+#We will discuss the amount of breweries per state, median values of ABV and IBU, missing values, and predictions of type of beer.
+#If there are any questions, please reach ask or reach out to our emails.
+
+
+# Create a heatmap to show how many breweries are in each state. Then print the head and tail of the combined breweries and beers dataset.
+```{r}
+#Install and add to library all of the packages below to be used in the 
+# analysis later.
+library(dplyr)
+library(tidyr)
+library(stringi)
+library(ggplot2)
+library(twitteR)
+library(httr)
+library(jsonlite)
+library(tidyverse)
+library(GGally)
+library(mvtnorm)
+library(class)
+library(caret)
+library(e1071)
+
+#Import Breweries.csv
+#Create table for states and state abbreviations from MAPS package to create a dataset to match our states
+
+Breweries <- read_csv("C:/Users/rache/Documents/DDS/Unit 8&9/Breweries.csv")
+lookup = data.frame(abb=state.abb, State = state.name)
+#Pull only the State and City information out of the dataset to create less clutter.
+#Change the name of State to "abb" to create a foreign key.
+#
+
+brews = Breweries[,c(3:4)]
+colnames(brews)[2] = "abb"
+
+
+#Merge the lookup table and our state tables to create a master copy. This will
+#allow us to create our heatmap later.
+#Change name to State to be able to count the total number of breweries per State.
+
+brews2 = merge(brews,lookup,"abb")
+
+#Use the count function to create a sum total of number of breweries per State.
+#Print the overall dataset brewery map to see if it added correctly.
+brewerymaps = count(brews2,State)
+brewerymaps
+
+#Change brewery to Breweries name
+colnames(brewerymaps)[2] = "Breweries"
+
+#Create a region column that is all lowercase to match all states
+brewerymaps$region <-tolower(brewerymaps$State)
+
+
+#Remove the first column so we only have state and Region
+brewerymaps = brewerymaps[-1]
+
+#Create a state map based on States.
+states<- map_data("state")
+
+#Merge dataframes brewerymaps and States in order to create 
+# a heat map for breweries by state
+map.df<- merge(states, brewerymaps, by = "region", all.x=T)
+map.df<- map.df[order(map.df$order),]
+
+p<-ggplot(map.df,aes(x=long,y=lat,group=group)) +
+  geom_polygon(aes(fill=Breweries))+
+  geom_path() + xlab("Latitude of State") + ylab("Longitude of State") +
+  scale_fill_gradientn(colours = rev(heat.colors(10)), na.value ="grey90") +
+  ggtitle("Breweries by State") + coord_map() 
+p
+
+
+
+
+#Import Beers dataset
+#Change brewery name in Beers to Brew_ID to create a foreign key
+#Then combine both beers and breweries csv files
+
+Beers <- read_csv("C:/Users/rache/Documents/DDS/Unit 8&9/Beers.csv")
+colnames(Beers)[5] = "Brew_ID"
+combined <- merge(Beers,Breweries, by ="Brew_ID", all = TRUE)
+colnames(combined)[2] = "Beer_Name"
+colnames(combined)[8] = "Brewery_Name"
+
+
+
+#Print the first 6 and last 6 rows.
+
+head(combined)
+tail(combined)
+```
+
+#How many NA values in ABV and IBU?
+#There are 62 missing NA values for ABV and 1005 missing values
+#for IBU. The ABV values won't have a huge effect on the data but
+#almost half (42%) of IBU is missing. Removing these will be neccessary
+#but will also make our data less accurate.
+```{r}
+#Sum the amount of NAs in the ABV and IBU columns.
+sum(is.na(combined$ABV))
+sum(is.na(combined$IBU))
+```
+
+
+
+
+
+
+#Compute the median ABV by state and plot a bar chart to comapare
+# We removed all NA values from each column to do this analysis.
+Kentucky has the highest median ABV, followed by DC, Kentucky, West Viriginia and New Mexico. There weren't many more states that were above the average of ABV.
+The median IBU has Maine with the highest one. There are a lot more states that are above the average of the IBU than ABV. 
+
+
+```{r}
+#Filter the data for non-NA ABV values. Group by state and create
+#a median for every state. Then graph these medians together without a legend.
+
+combined%>%filter(!is.na(ABV))%>%
+  group_by(State)%>%
+  dplyr::summarize(median=median(ABV),count=n())%>%
+  ggplot(aes(x=State, y = median, fill=State)) + geom_col() +
+  ggtitle("Median Alcohol by Volume of Beer by State") + ylab("Median ABV") +
+  theme(legend.position = "none")
+
+
+#Filter the data for non-NA IBU values. Group by state and create
+#a median for every state. Then graph these medians together without a legend.
+
+combined%>%filter(!is.na(IBU))%>%
+  group_by(State)%>%
+  dplyr::summarize(median=median(IBU),count=n())%>%
+  ggplot(aes(x=State, y = median, fill=State)) + geom_col() +
+  ggtitle("Median International Bitterness Units of Beer by State") +  ylab("Median IBU") +theme(legend.position = "none") 
+```
+
+
+
+
+#Which state has the beer with the maximum ABV? Colorado at 12.8%
+#Which state has the most bitter beer (IBU)? Oregon with 138 IBU
+
+```{r}
+# Remove any NAs in the ABV column with complete cases, order ABV by descending and return the bottom 6 rows to see the highest ABV
+
+combined <- combined[complete.cases(combined$ABV),]
+combinedABV <- combined[order(combined$ABV),]
+tail(combinedABV)
+#Remove any NAS in the IBU column, order IBU by descending and return the bottom 6 rows to see the highest IBU
+
+combined <- combined[complete.cases(combined$IBU),]
+combinedIBU <- combined[order(combined$IBU),]
+tail(combinedIBU)
+```
+
+
+#There are 62 missing values or 2.5% of the data data missing ABV values.
+#The ABV has a median of 5.6% and a mean of 5.9% which is pretty average for beer. The beer with the highest was 12.8% in Colorado and the lowest ABV was at 0.1% (which is extremely low). It is interesting that Colorado had the highest ABV because altitude makes you feel the effects of beer more. The data is right skewed because most of the values are centered around 5% but we have a lot of higher perecentages and not a lot of lower ones.
+```{r}
+#Make histogram of ABV values to show distribution
+combined %>% ggplot(aes(x= ABV)) + geom_histogram(color = "Black") +
+  ggtitle("Distribution of Alcohol by Volume in Beers")
+```
+#Is there a relationship between ABV and IBU?
+#Yes, there is a correlation between these values. There is a positive correlation shown in the coefficient being 0.671. This is a moderate correlation. An increase in IBU is associated with an increase (but not caused by) an increase in ABV (and vice versa).
+
+```{r}
+#Create a scatterplot with a fitted regession line to show the relationship between ABV and IBU
+combined %>%filter(!is.na(IBU))%>%
+  filter(!is.na(ABV))%>%
+  ggplot(aes(x=ABV, y = IBU)) + geom_point() +geom_smooth(method = "lm")
+```
+
+
+#Can we predict if a beer is an IPA or an Ale by the ABV and IBU values?
+##Yes we can.
+###The statistical evidence shows an 86% accuracy when fitting a knn model. We use this model by taking a data point in a training set of ABV and IBU values and looking at the 5 closest data points. If the majority of these 5 points are labeled as IPA, then this one will be (and vice versa). The model does this for all data points. We then use a 
+#### We can see using the multiple loops that our k factor of 5 is the most accurate model to predict, which is why we used k=5 to run our model.
+```{r}
+
+#which k level is best?
+## Create a test and train dataset based on the combined dataset with no missing values
+### Loop for many k and one training / test partition
+
+
+#Create a dataset with column called Style. If IPA is in name, label IPA
+# If not an IPA but still an Ale, label Ale, if neither of these, label Other
+#Then filter out others.
+
+totalAle = combined %>%mutate(Style = if_else(str_detect(combined$Style, "IPA"), "IPA", if_else(str_detect(combined$Style, "Ale"), "Ale", "Other"))) %>%
+  filter(!is.na(ABV)) %>%
+  filter(!is.na(IBU)) %>%
+  filter(Style == "IPA" | Style == "Ale") %>%
+  select(ABV, IBU, State, Style)
+
+splitPerc = .7
+trainIndices = sample(1:dim(totalAle)[1],round(splitPerc*dim(totalAle)[1]))
+train = totalAle[trainIndices,]
+test = totalAle[-trainIndices,]
+train
+test
+accs = data.frame(accuracy = numeric(30), k = numeric(30))
+for(i in 1:30)
+{
+  classifications = knn(train[,c(1:2)],test[,c(1:2)],train$Style, prob = TRUE, k = i)
+  table(test$Style,classifications)
+  CM = confusionMatrix(table(test$Style,classifications))
+  accs$accuracy[i] = CM$overall[1]
+  accs$k[i] = i
+}
+plot(accs$k,accs$accuracy, type = "l", xlab = "k")
+
+#loop for many ks and the average of many training / test 
+iterations = 500
+numks = 30
+masterAcc = matrix(nrow = iterations, ncol = numks)
+
+for(j in 1:iterations)
+{
+  accs = data.frame(accuracy = numeric(30), k = numeric(30))
+  trainIndices = sample(1:dim(totalAle)[1],round(splitPerc * dim(totalAle)[1]))
+  train = totalAle[trainIndices,]
+  test = totalAle[-trainIndices,]
+  for(i in 1:numks)
+  {
+    classifications = knn(train[,c(1:2)],test[,c(1:2)],train$Style, prob = TRUE, k = i)
+    table(classifications,test$Style)
+    CM = confusionMatrix(table(classifications,test$Style))
+    masterAcc[j,i] = CM$overall[1]
+  }
+}
+
+#plot the accuracies of all the models to see which one is best.
+MeanAcc = colMeans(masterAcc)
+plot(seq(1,numks,1),MeanAcc, type = "l")
+
+#Create a confusion matrix based on this model and then plot the results
+#This gives us our accuracy.
+classifications = knn(train[,c(1:2)],test[,c(1:2)], train$Style,
+                      prob = TRUE, k =5)
+table(classifications,test$Style)
+
+CM = confusionMatrix(table(classifications,test$Style))
+
+fourfoldplot(CM$table,color = c("cyan", "pink"),
+             conf.level = 0, margin = 1, main = "Predicition of IPAs and Ales")
+
+
+
+```
+
+# We compared this to a Naive-Bayes model using ABV and IBU. The results were less accurate than the Knn model, which is why we have reported our findings from the knn.
+
+```{r}
+#Create a Naive-Bayes model and then create a confusion matrix to compare the accuracy to the knn.
+model = naiveBayes(Style~ABV+IBU, data = train)
+table(predict(model,test[,c(1:2)]), test$Style)
+CM = confusionMatrix(table(predict(model,test[,c(1:2)]), test$Style))
+CM
+```
+
+#After looking to see if we could predict the IPA vs. Ales we decided to do a little research into a few states and what beers are popular there.
+## We looked at Missouri (HQ of Budweiser), Texas, California, and Colorado. These last 3 had the highest breweries of all the states.
+### We looked first by our styles which were IPA, Ale, and Other and then looked at the percentages to evenly compare them. We can see that IPAs and Ales make up a majority of California and Colorado but Other seems to be more popualar in Missouri and Texas.
+### We also broke down Ale into a few more categories (including IPAs) to see if a certain type was more popular. We can see in both the distribution and percentage graphs that IPA is the most popular choice out of all the ales looked at. If you wanted to focus in on marketing a type of ale, IPAs would be it.
+
+
+```{r}
+
+#Create a dataset that includes just the states Missouri, Texas, California, and Colorado.
+#Then plot the distribution of the beer styles in each state and the percentages of beer styles in each state.
+Oktoberfest = combined %>%mutate(Style = if_else(str_detect(combined$Style, "IPA"), "IPA", if_else(str_detect(combined$Style, "Ale"), "Ale", "Other"))) %>%
+  filter(State == 'MO' | State == "TX" | State == "CO" | State == "CA") %>%
+  filter(!is.na(Style)) %>%
+  select(State,Style)
+
+#Distribution
+Oktoberfest %>% ggplot(aes(x = State, fill = Style)) +
+  geom_bar(position = "dodge") + ggtitle("Distribution of Beer Types per Specific States")+ ylab("Count of Beer Type")
+#Percentages
+Oktoberfest %>% ggplot(aes(x = State, fill = Style)) +
+  geom_bar(position = "fill") + ggtitle("Percentage of Beer Types per Specific States") + ylab("Percentage of Beer Type")
+
+#Create a dataset to label the different types of ales and then filter by our four states.
+#Then plot the distribution of the beer styles in each state and the percentages of ale types in each state.
+Oktoberfest3 = combined %>%
+  mutate(Styles = if_else(str_detect(combined$Style, "American Amber / Red Ale"), "Red Ale", if_else(str_detect(combined$Style, "American Blonde Ale"), "Blonde Ale", if_else(str_detect(combined$Style, "American Brown Ale"), "Brown Ale", if_else(str_detect(combined$Style, "American Double / Imperial IPA"), "IPA", if_else(str_detect(combined$Style, "American IPA"), "IPA", if_else(str_detect(combined$Style, "APA"), "APA", if_else(str_detect(combined$Style, "American Pale Wheat Ale"), "Pale Wheat Ale", if_else(str_detect(combined$Style, "American Porter"), "American Porter", if_else(str_detect(combined$Style, "Fruit / Vegetable Beer"), "Fruit / Vegetable Beer", "Other" )))))))))) %>%
+  filter(!is.na(Styles)) %>%
+  filter(Styles != "Other") %>%
+  filter(State == "MO" | State == "TX" | State == "CO" | State == "CA") %>%
+  select(Styles, State)
+
+#Distribution
+Oktoberfest3 %>% ggplot(aes(x = State, fill = Styles)) +
+  geom_bar(position = "dodge") + ggtitle("Distribution of Ale Types per Specific States")+ ylab("Count of Beer Type")
+#Percentages
+Oktoberfest3 %>% ggplot(aes(x = State, fill = Styles)) +
+  geom_bar(position = "fill") + ggtitle("Percentage of Ale Types per Specific States") + ylab("Percentage of Beer Type")
+```
+
+
